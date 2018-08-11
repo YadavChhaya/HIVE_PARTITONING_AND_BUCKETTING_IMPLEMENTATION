@@ -1,0 +1,183 @@
+PARTITIONING AND BUCKETTING IMPLEMENTATION IN HIVE
+===================================================
+
+
+Input Dataset: remedy.txt
+--------------------------
+201,piyush,male,400,metacin
+202,marsinga,female,570,crocin
+203,anifa,female,600,crocin
+204,manisha,female,200,paracetamol
+205,vijay,male,670,crocin
+206,briito,male,800,metacin
+207,mohammed,male,999,paracetamol
+208,alaister,male,500,paracetamol
+209,hanna,female,600,metacin
+
+
+//BUCKETING WITHOUT PARTITIONING
+hive shell
+
+CREATE DATABASE IF NOT EXISTS pharmacydb;
+
+USE pharmacydb;
+
+CREATE TABLE IF NOT EXISTS  patient(
+patient_id int, 
+patient_name string, 
+gender string, 
+total_amount int, 
+drug string) 
+row format delimited 
+fields terminated by ',' 
+stored as textfile;
+LOAD DATA LOCAL INPATH '/home/cloudera/remedy.txt' OVERWRITE INTO TABLE patient;
+
+SELECT * FROM patient;
+
+//STATIC PARTITIONING IMPLEMENTATION 
+
+SET hive.enforce.bucketing =true;
+SET hive.exec.dynamic.partition.mode=strict;
+SET hive.exec.dynamic.partition=false;
+
+CREATE TABLE IF NOT EXISTS  static_partition_bucket_patient(
+patient_id int, patient_name string, gender string, total_amount int) 
+partitioned by (drug string) 
+clustered by (patient_id) 
+sorted by( patient_name) 
+into 3 buckets;
+
+
+INSERT OVERWRITE TABLE static_partition_bucket_patient PARTITION( drug='metacin')
+SELECT patient_id,patient_name,gender,total_amount
+FROM patient 
+WHERE drug = 'metacin';
+
+INSERT OVERWRITE TABLE static_partition_bucket_patient PARTITION( drug='crocin')
+SELECT patient_id,patient_name,gender,total_amount
+FROM patient 
+WHERE drug = 'crocin';
+
+INSERT OVERWRITE TABLE static_partition_bucket_patient PARTITION( drug='paracetamol')
+SELECT patient_id,patient_name,gender,total_amount
+FROM patient 
+WHERE drug = 'paracetamol';
+
+SELECT * from static_partition_bucket_patient;
+201	piyush	male	400	metacin
+206	briito	male	800	metacin
+209	hanna	female	600	metacin
+
+
+[cloudera@quickstart ~]$ hadoop fs -ls /user/hive/warehouse/pharmacydb.db/static_partition_bucket_patient/
+Found 1 items
+drwxrwxrwx   - cloudera supergroup          0 2018-08-12 00:57 /user/hive/warehouse/pharmacydb.db/static_partition_bucket_patient/drug=metacin
+
+[cloudera@quickstart ~]$ hadoop fs -ls /user/hive/warehouse/pharmacydb.db/static_partition_bucket_patient/drug=metacin/
+Found 3 items
+-rwxrwxrwx   1 cloudera supergroup         20 2018-08-12 00:57 /user/hive/warehouse/pharmacydb.db/static_partition_bucket_patient/drug=metacin/000000_0
+-rwxrwxrwx   1 cloudera supergroup          0 2018-08-12 00:57 /user/hive/warehouse/pharmacydb.db/static_partition_bucket_patient/drug=metacin/000001_0
+-rwxrwxrwx   1 cloudera supergroup         41 2018-08-12 00:57 /user/hive/warehouse/pharmacydb.db/static_partition_bucket_patient/drug=metacin/000002_0
+
+[cloudera@quickstart ~]$ hadoop fs -cat /user/hive/warehouse/pharmacydb.db/static_partition_bucket_patient/drug=metacin/000000_0
+201  piyush  male  400
+
+[cloudera@quickstart ~]$ hadoop fs -cat /user/hive/warehouse/pharmacydb.db/static_partition_bucket_patient/drug=metacin/000001_0
+
+[cloudera@quickstart ~]$ hadoop fs -cat /user/hive/warehouse/pharmacydb.db/static_partition_bucket_patient/drug=metacin/000002_0
+209  hanna  female  600
+206  briito  male  800
+
+
+
+
+
+//DYNAMIC PARTITIONING IMPLMENTATION ALONGWITH CLUSTERING
+
+SET hive.enforce.bucketing =true;
+SET hive.exec.dynamic.partition.mode=non-strict;
+SET hive.exec.dynamic.partition=true;
+
+CREATE TABLE IF NOT EXISTS  dynamic_partition_bucket_patient(
+patient_id int, patient_name string, gender string, total_amount int) 
+partitioned by (drug string) 
+clustered by (patient_id) 
+into 2 buckets;
+
+
+INSERT OVERWRITE TABLE dynamic_partition_bucket_patient PARTITION(drug)
+SELECT * FROM patient;
+
+
+[cloudera@quickstart ~]$ hadoop fs -ls /user/hive/warehouse/pharmacydb.db/dynamic_partition_bucket_patient/drug=metacin
+Found 2 items
+-rwxrwxrwx   1 cloudera supergroup         20 2018-08-12 01:04 /user/hive/warehouse/pharmacydb.db/dynamic_partition_bucket_patient/drug=metacin/000000_0
+-rwxrwxrwx   1 cloudera supergroup         41 2018-08-12 01:04 /user/hive/warehouse/pharmacydb.db/dynamic_partition_bucket_patient/drug=metacin/000001_0
+
+
+[cloudera@quickstart ~]$ hadoop fs -ls /user/hive/warehouse/pharmacydb.db/dynamic_partition_bucket_patient/drug=paracetamol
+
+Found 2 items
+-rwxrwxrwx   1 cloudera supergroup         45 2018-08-12 01:04 /user/hive/warehouse/pharmacydb.db/dynamic_partition_bucket_patient/drug=paracetamol/000000_0
+-rwxrwxrwx   1 cloudera supergroup         22 2018-08-12 01:04 /user/hive/warehouse/pharmacydb.db/dynamic_partition_bucket_patient/drug=paracetamol/000001_0
+
+
+
+[cloudera@quickstart ~]$ hadoop fs -ls /user/hive/warehouse/pharmacydb.db/dynamic_partition_bucket_patient/drug=crocin
+Found 2 items
+-rwxrwxrwx   1 cloudera supergroup         24 2018-08-12 01:04 /user/hive/warehouse/pharmacydb.db/dynamic_partition_bucket_patient/drug=crocin/000000_0
+-rwxrwxrwx   1 cloudera supergroup         40 2018-08-12 01:04 /user/hive/warehouse/pharmacydb.db/dynamic_partition_bucket_patient/drug=crocin/000001_0
+
+
+
+
+
+
+
+
+
+
+
+
+
+//ONLY BUCKETING IMPLEMENTATION WITHOUT ANY PARTITONING
+//BUCKETING CREATES FILES HOWEVER PARTITONING CREATES FOLDERS
+
+CREATE TABLE IF NOT EXISTS  onlybucket_patient(
+patient_id int, patient_name string, gender string, total_amount int,drug string)  
+clustered by (patient_id) 
+sorted by( patient_name) 
+into 3 buckets;
+
+
+INSERT OVERWRITE TABLE onlybucket_patient 
+SELECT patient_id,patient_name,gender,total_amount,drug
+FROM patient 
+;
+
+
+[cloudera@quickstart ~]$ hadoop fs -ls /user/hive/warehouse/pharmacydb.db/onlybucket_patient/
+Found 3 items
+-rwxrwxrwx   1 cloudera supergroup         97 2018-08-12 01:13 /user/hive/warehouse/pharmacydb.db/onlybucket_patient/000000_0
+-rwxrwxrwx   1 cloudera supergroup         91 2018-08-12 01:13 /user/hive/warehouse/pharmacydb.db/onlybucket_patient/000001_0
+-rwxrwxrwx   1 cloudera supergroup         85 2018-08-12 01:13 /user/hive/warehouse/pharmacydb.db/onlybucket_patient/000002_0
+
+[cloudera@quickstart ~]$ hadoop fs -cat /user/hive/warehouse/pharmacydb.db/onlybucket_patient/000000_0
+207  mohammed  male  999  paracetamol
+204  manisha  female  200  paracetamol
+201  piyush  male  400  metacin
+
+[cloudera@quickstart ~]$ hadoop fs -cat /user/hive/warehouse/pharmacydb.db/onlybucket_patient/000001_0
+208  alaister  male  500  paracetamol
+205  vijay  male  670  crocin
+202  marsinga  female  570  crocin
+
+[cloudera@quickstart ~]$ hadoop fs -cat /user/hive/warehouse/pharmacydb.db/onlybucket_patient/000002_0
+209  hanna  female  600  metacin
+206  briito  male  800  metacin
+203  anifa  female  600  crocin
+
+ 
+
+
